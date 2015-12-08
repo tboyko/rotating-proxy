@@ -83,6 +83,13 @@ module Service
 
 
   class Tor < Base
+
+    def initialize(port, circuit_lifetime)
+      @circuit_lifetime = circuit_lifetime
+
+      super(port)
+    end
+
     def data_directory
       "#{super}/#{port}"
     end
@@ -91,7 +98,9 @@ module Service
       super
       self.class.fire_and_forget(executable,
         "--SocksPort #{port}",
-        "--NewCircuitPeriod 120",
+        "--NewCircuitPeriod 10",
+        "--CircuitBuildTimeout 5",
+        "--MaxCircuitDirtiness #{@circuit_lifetime}",
         "--DataDirectory #{data_directory}",
         "--PidFile #{pid_file}",
         "--Log \"warn syslog\"",
@@ -140,9 +149,9 @@ module Service
     attr_reader :id
     attr_reader :tor, :polipo
 
-    def initialize(id)
+    def initialize(id, circuit_lifetime)
       @id = id
-      @tor = Tor.new(tor_port)
+      @tor = Tor.new(tor_port, circuit_lifetime)
       @polipo = Polipo.new(polipo_port, tor: tor)
     end
 
@@ -225,9 +234,10 @@ end
 haproxy = Service::Haproxy.new
 proxies = []
 
+circuit_lifetime = ENV['circuit_lifetime'] || 600
 tor_instances = ENV['tors'] || 10
 tor_instances.to_i.times.each do |id|
-  proxy = Service::Proxy.new(id)
+  proxy = Service::Proxy.new(id, circuit_lifetime)
   haproxy.add_backend(proxy)
   proxy.start
   proxies << proxy
